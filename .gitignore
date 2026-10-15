@@ -1,3 +1,8 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform: lokalny stan i pobrane providery (.terraform.lock.hcl commitujemy)
+*.tfstate
+*.tfstate.*
+.terraform/
