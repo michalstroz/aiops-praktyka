@@ -1,0 +1,22 @@
+# PDB dla orders-api: przy dobrowolnych zakłóceniach (drain węzła, upgrade node groupy)
+# naraz może zniknąć najwyżej jeden pod. Przy 2 replikach zawsze zostaje 1 obsługujący ruch.
+# maxUnavailable zamiast minAvailable: przy HPA (do 6 replik) nadal tylko 1 pod naraz.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kantyna-orders-api
+  namespace: michal
+  labels:
+    app.kubernetes.io/name: orders-api
+    app.kubernetes.io/instance: kantyna
+    app.kubernetes.io/component: orders-api
+    app.kubernetes.io/part-of: kantyna
+spec:
+  maxUnavailable: 1
+  # ten sam selektor co Deployment kantyna-orders-api (kantyna.selectorLabels w chartcie)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders-api
+      app.kubernetes.io/instance: kantyna
+  # pod, który nie jest Ready (np. CrashLoopBackOff), nie blokuje drainu węzła
+  unhealthyPodEvictionPolicy: AlwaysAllow
