@@ -1,0 +1,220 @@
+# CI/CD Kantyny (lab03).
+# pull_request: tylko testy orders-api i payments.
+# push na main: testy → build 4 obrazów → ECR → helm upgrade w K8S_NAMESPACE → smoke test.
+# AWS wyłącznie przez OIDC (vars.AWS_ROLE_ARN), bez kluczy w repo i w secrets.
+name: CI/CD Kantyna
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # PR: nowy commit anuluje stary przebieg. main: nie przerywamy trwającego wdrożenia.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # jawne "bash" = bash -eo pipefail
+    shell: bash
+
+env:
+  AWS_REGION: eu-central-1
+  EKS_CLUSTER: aiops
+  HELM_VERSION: v4.3.0
+  # https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz.sha256sum (zgodne z release notes helm/helm)
+  HELM_SHA256: 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
+  # klient smoke testu: busybox z ECR Public (bez limitów Docker Huba), przypięty do digestu
+  SMOKE_IMAGE: public.ecr.aws/docker/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
+
+jobs:
+  test-orders-api:
+    name: Testy orders-api
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: app/orders-api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          working-directory: app/orders-api
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: pytest
+        # --locked: błąd, gdy uv.lock nie zgadza się z pyproject.toml
+        run: uv run --locked pytest -q
+
+  test-payments:
+    name: Testy payments
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: app/payments
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # go 1.23 z go.mod, ta sama linia co golang:1.23 w Dockerfile i Makefile
+          go-version-file: app/payments/go.mod
+          cache-dependency-path: app/payments/go.sum
+
+      - name: go test
+        run: go test ./...
+
+  build:
+    name: Build ${{ matrix.service }}
+    needs: [test-orders-api, test-payments]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # checkout
+      id-token: write # token OIDC dla roli AWS (push do ECR)
+    strategy:
+      matrix:
+        # Postgres (obraz publiczny) i loadgen nie są budowane w CI
+        service: [orders-api, payments, worker, web]
+    env:
+      ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Logowanie do ECR
+        # jak `make ecr-login`, ale docker login dostaje sam host: ECR_REGISTRY ma jeszcze ścieżkę (/<login>)
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY%%/*}"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build i push ${{ matrix.service }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          # te same argumenty co `make build`: kontekst = katalog serwisu, linux/amd64
+          context: app/${{ matrix.service }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/kantyna/${{ matrix.service }}:${{ github.sha }}
+          build-args: |
+            APP_VERSION=${{ github.sha }}
+            APP_VARIANT=stable
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  deploy:
+    name: Wdrożenie na EKS
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # bez `environment:`: zmienia claim sub tokenu OIDC, a rola ufa tylko refs/heads/main
+    permissions:
+      contents: read # checkout (chart Helm)
+      id-token: write # token OIDC dla roli AWS (EKS)
+    concurrency:
+      group: deploy-${{ vars.K8S_NAMESPACE }}
+      cancel-in-progress: false
+    env:
+      ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalacja Helm ${{ env.HELM_VERSION }} (sprawdzona suma SHA-256)
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/helm.tar.gz" "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          echo "${HELM_SHA256}  ${RUNNER_TEMP}/helm.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/helm.tar.gz" -C "$RUNNER_TEMP" linux-amd64/helm
+          echo "$RUNNER_TEMP/linux-amd64" >> "$GITHUB_PATH"
+
+      - name: Sprawdzenie wersji Helm
+        # dowód, że używamy przypiętego Helma, a nie tego z obrazu runnera
+        run: |
+          command -v helm
+          helm version --short
+          test "$(helm version --template '{{.Version}}')" = "$HELM_VERSION"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: kubeconfig dla klastra ${{ env.EKS_CLUSTER }}
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      - name: helm upgrade
+        # --reuse-values zachowuje wartości release (nodeSelector, ingress, otel…)
+        # bez --install: brak release ma zatrzymać pipeline; bez --force-conflicts (patrz lab07)
+        run: |
+          helm upgrade kantyna app/deploy/helm/kantyna \
+            --namespace "$K8S_NAMESPACE" \
+            --reuse-values \
+            --set global.imageRegistry="$ECR_REGISTRY" \
+            --set-string global.imageTag="$IMAGE_TAG"
+
+      - name: kubectl rollout status
+        run: |
+          for svc in orders-api payments worker web; do
+            kubectl -n "$K8S_NAMESPACE" rollout status "deployment/kantyna-$svc" --timeout=5m
+          done
+
+      - name: Sprawdzenie obrazów w namespace
+        run: |
+          for svc in orders-api payments worker web; do
+            want="$ECR_REGISTRY/kantyna/$svc:$IMAGE_TAG"
+            got=$(kubectl -n "$K8S_NAMESPACE" get deploy "kantyna-$svc" \
+              -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "kantyna-$svc: $got"
+            if [ "$got" != "$want" ]; then
+              echo "::error::kantyna-$svc ma obraz $got, oczekiwano $want"
+              exit 1
+            fi
+          done
+
+      - name: Smoke test z wnętrza klastra
+        # jednorazowy pod w namespace odpytuje Service'y Kantyny; /version musi zwrócić SHA commita
+        run: |
+          kubectl -n "$K8S_NAMESPACE" run "kantyna-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --image="$SMOKE_IMAGE" --restart=Never --rm -i --quiet \
+            --pod-running-timeout=2m \
+            --command -- sh -ec "
+              echo '>> orders-api /healthz'; wget -qO- -T 5 http://kantyna-orders-api:8000/healthz; echo
+              echo '>> payments /healthz';   wget -qO- -T 5 http://kantyna-payments:8080/healthz; echo
+              echo '>> web /healthz';        wget -qO- -T 5 http://kantyna-web:8080/healthz
+              echo '>> orders-api /version'; wget -qO- -T 5 http://kantyna-orders-api:8000/version | grep -F '${IMAGE_TAG}'
+            "
