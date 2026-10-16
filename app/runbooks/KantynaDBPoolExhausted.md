@@ -43,6 +43,13 @@ Menu and order endpoints become slow or unavailable. Often precedes [KantynaHigh
 
 4. Recent changes: `helm -n kantyna history kantyna`, `kantyna-flags` content (orders-api section), traffic level.
 
+   Who last changed the flags - any manager other than `helm` means a manual change outside the pipeline:
+
+   ```bash
+   kubectl -n kantyna get configmap kantyna-flags \
+     -o jsonpath='{range .metadata.managedFields[*]}{.manager}{"\t"}{.operation}{"\t"}{.time}{"\n"}{end}'
+   ```
+
 ## Remediation
 
 | Action | Risk | Command |
@@ -54,6 +61,10 @@ Menu and order endpoints become slow or unavailable. Often precedes [KantynaHigh
 | Roll back release | Caution | `helm rollback kantyna <REV> -n kantyna` |
 
 Do not scale orders-api out to fix this - every new replica opens its own pool and can exhaust `max_connections` on postgres.
+
+Order matters when `db_pool_leak` is on: revert the flag first, then restart. Turning the flag off stops new leaks but does not release connections already leaked (they return only when the pool closes, i.e. on pod restart); restarting with the flag still on exhausts the pool again within minutes under traffic.
+
+Flags belong in the repo (`flags:` in Helm values, deployed by the pipeline). If you must patch `kantyna-flags` by hand to mitigate, set `flags.json` to exactly what the chart renders (`helm template kantyna deploy/helm/kantyna -s templates/configmap-flags.yaml`). A different value - even only formatting, e.g. `0.0` vs `0` - makes the next `helm upgrade` fail with `conflict with "kubectl-patch"`.
 
 ## Escalation
 
