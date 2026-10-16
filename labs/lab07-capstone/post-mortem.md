@@ -84,16 +84,16 @@ Od 14:20:32 do 14:42:20 Kantyna nie wyświetlała menu i nie przyjmowała zamów
 
 Zrobione: runbook KantynaDBPoolExhausted uzupełniony o sprawdzanie `managedFields`, kolejność „flaga, potem restart” i zasadę „flagi przez repo” (commit `6f99184`).
 
-Propozycje AI (✏️ ja: zatwierdź albo zmień, wpisz właściciela i termin):
+Propozycje AI. ✏️ ja (15:00): zatwierdzam wszystkie 6, właściciel i termin wpisałem sam:
 
 | # | Akcja | Rodzaj | Luka | Właściciel | Termin |
 |---|---|---|---|---|---|
-| 1 | Włączyć reguły alertów Kantyny w namespace uczestnika (`prometheusRule.enabled: true`) po uzgodnieniu z prowadzącym routingu we wspólnym Alertmanagerze | wykrywanie | brak alertów | | |
-| 2 | Wykrywanie rozjazdu: zaplanowany job w CI porównujący render chartu z klastrem (np. `helm upgrade --dry-run=server` / `kubectl diff --server-side`) albo alert, gdy `kantyna-flags` ma właściciela innego niż `helm` | zapobieganie | ręczne zmiany konfiguracji | | |
-| 3 | Flagi zmieniamy tylko przez PR do values. Odebrać ludziom i agentom `patch` na ConfigMapy w namespace (RBAC); wyjątek awaryjny tylko z wpisem w dzienniku i commitem wyrównującym | zapobieganie | ręczne zmiany konfiguracji | | |
-| 4 | `setup/check.sh`: liczyć tylko endpointy z `conditions.ready=true` | wykrywanie | fałszywie pozytywny wynik | | |
-| 5 | Sprawdzić i usunąć współwłasność `kubectl-patch` pola `data.flags.json`, zanim ktoś zmieni flagi w repo; inaczej pipeline może dostać konflikt | ryzyko | rozjazd konfiguracji | | |
-| 6 | Dashboard: zmienna `namespace`, panele „pula DB” i „p95 `/api/menu`” | wykrywanie | brak widoku podczas incydentu | | |
+| 1 | Włączyć reguły alertów Kantyny w namespace uczestnika (`prometheusRule.enabled: true`) po uzgodnieniu z prowadzącym routingu we wspólnym Alertmanagerze | wykrywanie | brak alertów | ✏️ michal | ✏️ 23.10.2026 |
+| 2 | Wykrywanie rozjazdu: zaplanowany job w CI porównujący render chartu z klastrem (np. `helm upgrade --dry-run=server` / `kubectl diff --server-side`) albo alert, gdy `kantyna-flags` ma właściciela innego niż `helm` | zapobieganie | ręczne zmiany konfiguracji | ✏️ michal | ✏️ 23.10.2026 |
+| 3 | Flagi zmieniamy tylko przez PR do values. Odebrać ludziom i agentom `patch` na ConfigMapy w namespace (RBAC); wyjątek awaryjny tylko z wpisem w dzienniku i commitem wyrównującym | zapobieganie | ręczne zmiany konfiguracji | ✏️ michal | ✏️ 23.10.2026 |
+| 4 | `setup/check.sh`: liczyć tylko endpointy z `conditions.ready=true` | wykrywanie | fałszywie pozytywny wynik | ✏️ michal | ✏️ 23.10.2026 |
+| 5 | Sprawdzić i usunąć współwłasność `kubectl-patch` pola `data.flags.json`, zanim ktoś zmieni flagi w repo; inaczej pipeline może dostać konflikt | ryzyko | rozjazd konfiguracji | ✏️ michal | ✏️ 23.10.2026 |
+| 6 | Dashboard: zmienna `namespace`, panele „pula DB” i „p95 `/api/menu`” | wykrywanie | brak widoku podczas incydentu | ✏️ michal | ✏️ 23.10.2026 |
 
 ## Pytania otwarte
 
@@ -106,4 +106,9 @@ Propozycje AI (✏️ ja: zatwierdź albo zmień, wpisz właściciela i termin):
 
 | Sekcja | Było (AI) | Jest (ja) | Dlaczego |
 |---|---|---|---|
-| | | | |
+| Akcje 1–6 | propozycje bez właściciela i terminu | zatwierdzone wszystkie; właściciel: michal, termin: 23.10.2026 | decyzja właściciela incydentu (15:00) |
+| Co nie zadziałało: ⚠️ dashboard lab05 | AI, poza dziennikiem | zostaje bez zmian | zatwierdzone bez komentarza |
+| Co nie zadziałało: ⚠️ `kubectl apply --dry-run=client` | AI, poza dziennikiem | zostaje bez zmian | zatwierdzone bez komentarza |
+| Pozostała treść szkicu | szkic AI | zatwierdzona bez zmian | — |
+
+Szkic AI w wersji sprzed moich decyzji: commit `347a520`.
