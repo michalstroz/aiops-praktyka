@@ -1,0 +1,72 @@
+W1015 09:09:15.347061   17155 warnings.go:70] v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+   0% |                                               | (0/13, 0 it/hr) [0s:0s]                                                                                100% |█████████████████████████████████████████████| (13/13, 842 it/s)
+AI Provider: litellm
+
+0: Deployment michal/kantyna-web()
+- Error: Deployment michal/kantyna-web has 2 replicas but 0 are available with status running
+Error: The deployment "kantyna-web" in the "michal" namespace is supposed to run 2 copies, but none are currently running.
+
+Solution: 1) Check pod status: `kubectl get pods -n michal`. 2) View pod logs: `kubectl logs -n michal <pod-name>`. 3) Describe pod for errors: `kubectl describe pod -n michal <pod-name>`. 4) Check image availability and resource limits. 5) Restart deployment: `kubectl rollout restart deployment kantyna-web -n michal`.
+1: Deployment michal/kantyna-worker()
+- Error: Deployment michal/kantyna-worker has 1 replicas but 0 are available with status running
+Error: The deployment "kantyna-worker" in the "michal" namespace has 1 replica configured, but none are currently running.
+
+Solution: 1) Check pod status: `kubectl get pods -n michal`. 2) View pod logs: `kubectl logs -n michal <pod-name>`. 3) Describe pod: `kubectl describe pod -n michal <pod-name>`. 4) Fix issues (image, resources, permissions) and redeploy.
+2: Deployment michal/kantyna-orders-api()
+- Error: Deployment michal/kantyna-orders-api has 2 replicas but 0 are available with status running
+Error: The deployment "kantyna-orders-api" has 2 pod replicas configured, but none are currently running.
+
+Solution: 1) Check pod status: `kubectl get pods -n michal`. 2) View pod logs: `kubectl logs <pod-name> -n michal`. 3) Describe pod: `kubectl describe pod <pod-name> -n michal`. 4) Fix issues found or rollback deployment.
+3: ReplicaSet michal/kantyna-worker-79b8f9f8fd(Deployment/kantyna-worker)
+- Error: pods "kantyna-worker-79b8f9f8fd-p4pcc" is forbidden: exceeded quota: participant-quota, requested: requests.memory=2Gi, used: requests.memory=960Mi, limited: requests.memory=2560Mi
+Error: Pod cannot start because memory quota exceeded. You requested 2Gi but only 1.6Gi available (used 960Mi of 2.56Gi limit).
+
+Solution: 1) Reduce pod memory request. 2) Delete unused pods. 3) Increase namespace quota. 4) Use smaller container images.
+4: Ingress michal/kantyna-web()
+- Error: Ingress uses the ingress class alb which does not exist.
+Error: The Ingress resource references an ingress class named "alb" that hasn't been created in your cluster.
+
+Solution: 1) Install AWS Load Balancer Controller. 2) Run `kubectl get ingressclass` to verify "alb" class exists. 3) If missing, apply the controller's YAML manifest. 4) Redeploy your Ingress resource.
+5: ConfigMap michal/kube-root-ca.crt()
+- Error: ConfigMap kube-root-ca.crt is not used by any pods in the namespace
+Error: A ConfigMap named kube-root-ca.crt exists but no pods in this namespace are using it.
+
+Solution: 1) Verify if pods need this ConfigMap. 2) If needed, mount it in pod specs using volumeMounts. 3) If unused, delete it with: kubectl delete configmap kube-root-ca.crt
+6: Pod michal/kantyna-web-59db9b78f6-xn6p7(Deployment/kantyna-web)
+- Error: Back-off pulling image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": ErrImagePull: rpc error: code = NotFound desc = failed to pull and unpack image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": failed to resolve reference "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": 574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1: not found
+Error: Kubernetes cannot find and pull the Docker image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1" from AWS ECR registry.
+
+Solution: 1) Verify image exists in ECR repository. 2) Check image tag is correct. 3) Ensure cluster has ECR credentials configured. 4) Verify IAM permissions allow ECR access. 5) Re-push image if missing.
+7: Pod michal/kantyna-orders-api-75d85574f4-t9c5f(Deployment/kantyna-orders-api)
+- Error: the last termination reason is Error container=orders-api pod=kantyna-orders-api-75d85574f4-t9c5f
+Error: The orders-api container in the kantyna-orders-api pod crashed with an error.
+
+Solution: 1) Check pod logs: `kubectl logs kantyna-orders-api-75d85574f4-t9c5f -c orders-api`. 2) Review application errors. 3) Verify environment variables and configs. 4) Check resource limits. 5) Restart pod if needed.
+8: Pod michal/kantyna-web-59db9b78f6-7pqxv(Deployment/kantyna-web)
+- Error: Back-off pulling image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": ErrImagePull: rpc error: code = NotFound desc = failed to pull and unpack image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": failed to resolve reference "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1": 574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1: not found
+Error: Kubernetes cannot find and pull the Docker image "574921529806.dkr.ecr.eu-central-1.amazonaws.com/kantyna/web:1.0.1" from AWS ECR registry.
+
+Solution: 1) Verify image exists in ECR repository. 2) Check image tag is correct. 3) Ensure cluster has ECR credentials configured. 4) Verify IAM permissions allow ECR access. 5) Re-push image if missing.
+9: Service michal/kantyna-orders-api()
+- Error: Service has not ready endpoints, pods: [Pod/kantyna-orders-api-75d85574f4-ztb85 Pod/kantyna-orders-api-75d85574f4-t9c5f], expected 2
+Error: The Service cannot route traffic because its pods are not ready. Two pods are running but not responding to health checks.
+
+Solution: 1) Check pod logs: `kubectl logs pod-name`. 2) Verify readiness probes are configured correctly. 3) Ensure application started successfully. 4) Check resource limits aren't causing crashes. 5) Restart pods if needed.
+10: Service michal/kantyna-payments()
+- Error: Service has no endpoints, expected label app.kubernetes.io/instance=kantyna
+- Error: Service has no endpoints, expected label app.kubernetes.io/name=payment
+Error: The Service cannot find any running Pods because no Pods have the required labels matching the Service selector.
+
+Solution: 1) Verify Pod labels match Service selectors. 2) Check Pods are running: kubectl get pods -l app.kubernetes.io/instance=kantyna. 3) Add missing labels to Pod specs. 4) Redeploy if needed.
+11: Service michal/kantyna-web()
+- Error: Service has not ready endpoints, pods: [Pod/kantyna-web-59db9b78f6-7pqxv Pod/kantyna-web-59db9b78f6-xn6p7], expected 2
+Error: The Service cannot route traffic because its pods are not ready. 2 pods are running but not responding to health checks.
+
+Solution: 1) Check pod logs: `kubectl logs pod-name`. 2) Verify readiness probes are configured. 3) Check resource limits. 4) Restart pods if needed: `kubectl rollout restart deployment/kantyna-web`.
+12: Service michal/kantyna-worker()
+- Error: Service has no endpoints, expected label app.kubernetes.io/instance=kantyna
+- Error: Service has no endpoints, expected label app.kubernetes.io/name=worker
+Error: The Service cannot find any running pods to route traffic to because no pods have the required labels.
+
+Solution: 1) Check pod labels with `kubectl get pods --show-labels`. 2) Verify pods have labels `app.kubernetes.io/instance=kantyna` and `app.kubernetes.io/name=worker`. 3) If missing, add labels using `kubectl label pods <pod-name> app.kubernetes.io/instance=kantyna app.kubernetes.io/name=worker`. 4) Restart the Service.
+
